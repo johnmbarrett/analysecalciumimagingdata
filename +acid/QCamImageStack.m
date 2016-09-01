@@ -1,5 +1,12 @@
-classdef QCamImageStack < ImageStack
-    properties (Protected)
+classdef QCamImageStack < acid.ImageStack
+    properties (GetAccess=public,SetAccess=protected)
+        Height
+        Width
+        NumberOfSamples
+        NumberOfFrames
+    end
+    
+    properties (Access=protected)
         FileNames
         FileHandles
         FileHeaders
@@ -17,13 +24,13 @@ classdef QCamImageStack < ImageStack
             
             obj.FileNames = files;
             obj.FileHandles = cellfun(@fopen,files);
-            obj.FileHeaders = arrayfun(@parseQCamHeader,obj.fileHandles);
+            obj.FileHeaders = arrayfun(@parseQCamHeader,obj.FileHandles);
             
-            obj.Height = unique(arrayfun(@(r) r(4)-r(2),[obj.FileHeaders.ROI]));
+            obj.Height = unique(cellfun(@(r) r(4)-r(2),{obj.FileHeaders.ROI}));
             
             assert(isscalar(obj.Height),'acid:ImageStack:MismatchedInputFiles','All images must have the same height');
             
-            obj.Width = unique(arrayfun(@(r) r(3)-r(1),[obj.FileHeaders.ROI]));
+            obj.Width = unique(cellfun(@(r) r(3)-r(1),{obj.FileHeaders.ROI}));
             
             assert(isscalar(obj.Width),'acid:ImageStack:MismatchedInputFiles','All images must have the same width');
             
