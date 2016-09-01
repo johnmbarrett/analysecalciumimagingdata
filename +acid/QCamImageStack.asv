@@ -1,0 +1,25 @@
+classdef QCamImageStack < ImageStack
+    properties (Protected)
+        FileNames
+        FileHandles
+        FileHeaders
+    end
+    
+    methods
+        function obj = QCamImageStack(files)
+            assert(ischar(files) || iscellstr(files),'acid:QCamImageStack:BadConstructorInput','QCamImageStack needs a list of files.')
+            
+            if ischar(files)
+                files = {files};
+            end
+            
+            obj.FileNames = files;
+            obj.FileHandles = cellfun(@fopen,files);
+            obj.FileHeaders = arrayfun(@parseQCamHeader,obj.fileHandles);
+            
+            obj.Height = unique(arrayfun(@(r) r(4)-r(2),[obj.FileHeaders.ROI]));
+            
+            assert(numel(obj.Height)
+        end
+    end
+end

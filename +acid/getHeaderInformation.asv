@@ -1,0 +1,117 @@
+function [header,type] = getHeaderInformation(imageStackFile,varargin) % TODO : refactor
+    [header,type] = getHeaderInformationHelper(imageStackFile);
+    
+    isRealFinitePositiveNumericScalar = @(x) isnumeric(x) && isscalar(x) && isfinite(x) && isreal(x) && x > 0;
+    isFinitePositiveIntegerScalar = @(x) isRealFinitePositiveNumericScalar(x) && round(x) == x;
+    parser = inputParser;
+    parser.KeepUnmatched = true;
+    parser.addParameter('Width',header(1).Width,isFinitePositiveIntegerScalar);
+    parser.addParameter('Height',header(1).Height,isFinitePositiveIntegerScalar);
+    parser.addParameter('FrameRate',header(1).FrameRate,isRealFinitePositiveNumericScalar);
+    parser.parse(varargin{:});
+    
+    [header.Width] = deal(parser.Results.Width);
+    [header.Height] = deal(parser.Results.Height);
+    [header.FrameRate] = deal(parser.Results.FrameRate);
+end
+
+function [header,type] = getHeaderInformationHelper(imageStackFile) % TODO : refactor
+    [~,~,extension] = fileparts(imageStackFile);
+    extension = extension(2:end);
+    
+    if ~isempty(imformats(extension))
+        header = imfinfo(imageStackFile);
+        
+        if isfield(header(1),'DelayTime')
+            [header.FrameRate] = deal(100/header(1).DelayTime);
+        else % TODO : other ways we can get this
+            [header.FrameRate] = deal(NaN);
+        end
+        
+        if ~isfield(header,'NumberOfSamples')
+            image = imread(imageStackFile);
+            [header.NumberOfSamples] = deal(size(image,3));
+        end
+        
+        [header.NumberOfFrames] = deal(numel(header));
+        
+        type = 'IMAGE';
+        return
+    end
+    
+    supportedVideoFormats = VideoReader.getFileFormats();
+    
+    if any(ismember({supportedVideoFormats.Extension},extension))
+        header = VideoReader(imageStackFile);
+        type = 'VIDEO';
+        return
+    end
+    
+    switch extension
+        case 'mat'
+            data = load(imageStackFile);
+            
+            fields = fieldnames(data);
+            
+            assert(numel(fields) == 1,'acid:BadMATFile','.mat file must contain a single 2-4 dimensional matrix');
+            
+            data = data.(fields{1});
+            
+            assert(ismember(ndims(data),2:4),'acid:BadMATFile','.mat file must contain a single 2-4 dimensional matrix');
+            
+            header.Data = data;
+            header.Width = size(data,2);
+            header.Height = size(data,1);
+            header.NumberOfSamples = size(data,3);
+            header.NumberOfFrames = size(data,4);
+            header.FrameRate = NaN;
+            type = 'MATRIX';
+        case 'qcamraw'
+            header = readQCamRawFile(imageStackFile);
+            type = 'QCAM';
+        otherwise
+            error('acid:UnsupportedFileType','File type %s is not supported',extension);
+    end
+end
+
+function header = readQCamRawFile(imageStackFile)
+    qcamHeader = parseQCamHeader(imageStackFile);
+    header = struct([]);
+    header(1).Width = qcamHeader.ROI(3)-qcamHeader.ROI(1);
+    header(1).Height = roi(4)-roi(2);
+
+    return
+
+    fin = fopen(imageStackFile);
+    
+    % TODO : proper header parsing separated out into its own function
+    fgetl(fin);
+    headerBytesLine = fgetl(fin); % TODO : will this always be true?
+    headerBytes = regexp(headerBytesLine,'Fixed-Header-Size: ([0-9]+)','tokens');
+    headerBytes = str2double(headerBytes{1});
+    
+    fseek(fin,0,-1);
+    
+    headerString = fread(fin,[1 headerBytes],'char=>char');
+    roi = regexp(headerString,'ROI:\s([0-9]+),\s([0-9]+),\s([0-9]+),\s([0-9]+)','tokens');
+    roi = cellfun(@str2double,roi{1});
+    
+    
+    exposure = regexp(headerString,'Exposure: ([0-9]+) \[(.*?)\]','tokens');
+    exposureTime = str2double(exposure{1}{1});
+    exposureUnit = exposure{1}{2};
+    
+    exposureMultipliers = struct('s',1,'ms',1e-3,'us',1e-6,'ns',1e-9,'ps',1e-12,'fs',1e-15,'as',1e-18,'zs',1e-21,'ys',1e-24); % TODO : is this right? what about kiloseconds and upwards?
+    
+    header(1).FrameRate = 1/(exposureTime*exposureMultipliers.(exposureUnit));
+    
+    header(1).NumberOfSamples = 1;
+    
+    frameBytes = regexp(headerString,'Frame-Size: ([0-9]+)','tokens');
+    frameBytes = str2double(frameBytes{1});
+    
+    fseek(fin,0,1);
+    totalBytes = ftell(fin)-headerBytes;
+    
+    header(1).NumberOfFrames = totalBytes/frameBytes;
+end
