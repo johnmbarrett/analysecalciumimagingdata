@@ -8,6 +8,7 @@ classdef (Abstract) ImageStack
     end
     
     methods (Abstract,Access=protected)
+        index = end_(obj,k,n)
         data = subsref_(obj,subs)
     end
         
@@ -15,15 +16,14 @@ classdef (Abstract) ImageStack
         function obj = ImageStack(h,w,s,f)
             % could also use a dependent property but that would mean four
             % calls to builtin('subsref',...) in size@acid.ImageStack
-            obj.Height = h;
-            obj.Width = w;
-            obj.NumberOfSamples = s;
-            obj.NumberOfFrames = f;
+            ob
             obj.Size = [h w s f];
         end
         
-        function index = end(obj,k,~)
-            index = size(obj,k);
+        function index = end(obj,k,n)
+            assert(k > 0 && n > 0 && k < 5 && n < 5,'acid:ImageStack:BadIndexingOperation','Index exceeds ImageStack dimensions');
+            
+            index = obj.end_(k,n);
         end
         
         function sz = size(obj,dim)
